@@ -1,0 +1,171 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Parameters": {
+    "S3Bucket": {
+      "Type": "String",
+      "Description": "The name of the S3 bucket where the deployment package is placed."
+    },
+    "S3Key": {
+      "Type": "String",
+      "Description": "The key of the S3 bucket where the deployment package is placed."
+    },
+    "WarningDelivery": {
+      "Type": "String",
+      "Description": "The delivery method of warning message. To phone numbers directly or to an SNS topic.",
+      "Default": "Topic",
+      "AllowedValues": [
+        "Topic",
+        "SMS"
+      ]
+    },
+    "WarningCutoff": {
+      "Type": "Number",
+      "Description": "A value from 0 to 1. If the percentage of usage crossed the value, the recipients will be notified. For example, if the value is set to 0.7 that means if one region used 70% of its spending limit, you will see this region is included in a warning message.",
+      "Default": "0.7",
+      "MaxValue": "1",
+      "MinValue": "0"
+    },
+    "WarningAudience": {
+      "Type": "String",
+      "Description": "The SNS Topic ARN or a list of phone numbers separated by ','."
+    }
+  },
+  "Resources": {
+    "AWSSMSUsageAlarmLambdaFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Handler": "lambda_function.lambda_handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "AWSSMSUsageAlarmLambdaExecutionRole",
+            "Arn"
+          ]
+        },
+        "Code": {
+          "S3Bucket": {
+            "Ref": "S3Bucket"
+          },
+          "S3Key": {
+            "Ref": "S3Key"
+          }
+        },
+        "Environment": {
+          "Variables": {
+            "WARNING_CUTOFF": {
+              "Ref": "WarningCutoff"
+            },
+            "WARNING_AUDIENCE": {
+              "Ref": "WarningAudience"
+            },
+            "WARNING_DELIVERY": {
+              "Ref": "WarningDelivery"
+            }
+          }
+        },
+        "Runtime": "python3.7",
+        "MemorySize": "128",
+        "Timeout": "30"
+      }
+    },
+    "AWSSMSUsageAlarmLambdaExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "lambda.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "AWSSMSUsageAlarmLambdaPolicy",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sns:Publish"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": "arn:aws:logs:*:*:*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "cloudwatch:GetMetricStatistics"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sns:GetSMSAttributes"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "AWSSMSUsageAlarmCloudWatchRule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Description": "The CloudWatch Event rule for AWSSMSUsageAlarm.",
+        "ScheduleExpression" : "cron(0 0 * * ? *)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "AWSSMSUsageAlarmLambdaFunction",
+                "Arn"
+              ]
+            },
+            "Id": "AWSSMSUsageAlarmLambdaFunctionTarget"
+          }
+        ]
+      }
+    },
+    "AWSSMSUsageAlarmLambdaFunctionTriggerPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "AWSSMSUsageAlarmLambdaFunction",
+            "Arn"
+          ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "AWSSMSUsageAlarmCloudWatchRule",
+            "Arn"
+          ]
+        }
+      }
+    }
+  }
+}
