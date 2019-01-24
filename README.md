@@ -24,7 +24,7 @@ If you wish to send the alarm to an SNS topic, you should create an SNS topic in
 
 The CloudFormation stack should be launched in the region of `us-east-1`.
 
-When creating a stack, it is required to upload the deployment package of the Lambda function to an S3 bucket that is located in `us-east-1`.
+When creating a stack, it is required to upload the [deployment package](https://github.com/starkshaw/AWS-SMSUsageAlarm/releases) of the Lambda function to an S3 bucket that is located in `us-east-1`.
 
 ### Settings
 
