@@ -1,6 +1,7 @@
 import json
 import boto3
 import sys
+import os
 from datetime import datetime, timedelta
 import logging
 logger = logging.getLogger()
@@ -8,14 +9,16 @@ logger.setLevel(logging.INFO)
 
 today = datetime.today()
 SMS_regions = ['us-east-1', 'us-west-2', 'eu-west-1', 'ap-northeast-1', 'ap-southeast-1', 'ap-southeast-2']
-warning_cutoff = 0.7 # Value between 0 to 1
-warning_delivery = 'SMS' # 'SMS' or 'Topic'
-warning_audience = '' # A list of phone numbers or a string of an SNS Topic ARN
+warning_cutoff = float(os.environ['WARNING_CUTOFF']) # Value between 0 to 1
+warning_delivery = os.environ['WARNING_DELIVERY'] # 'SMS' or 'Topic'
+warning_audience = os.environ['WARNING_AUDIENCE'] # A list of phone numbers or a string of an SNS Topic ARN
 sns_sender_id = 'AWSWarning'
 account_id = boto3.client('sts').get_caller_identity().get('Account')
 
 def lambda_handler(event, context):
-    logger.info('Event: {}', event)
+    logger.info('Event: {}'.format(json.dumps(event)))
+    if warning_delivery == 'SMS':
+        warning_audience = warning_audience.split(',')
     body_message = ''
     usage_details = checkSMSMonthToDateSpentUSDOfThisMonthInEachRegion()
     logger.info('Usage details: {}'.format(json.dumps(usage_details)))
@@ -148,7 +151,7 @@ def checkSMSMonthToDateSpentUSD(region_name, start_time, end_time):
         return response
     else:
         data['Datapoints'].sort(key=lambda item:item['Timestamp'], reverse=False)
-        logger.info('Sorted Metric of AWS/SNS SMSMonthToDateSpentUSD: {}'.format(data))
+        logger.info('Sorted Metric of AWS/SNS SMSMonthToDateSpentUSD in {}: {}'.format(region_name, data))
         latest_datapoint = data['Datapoints'][-1]
         use_ratio = float(latest_datapoint['Maximum']) / float(account_limit)
         use_ratio = round(use_ratio, 3)
@@ -170,8 +173,3 @@ def checkSMSMonthToDateSpentUSD(region_name, start_time, end_time):
             'end_time': '{}'.format(str(end_time))
         }
         return response
-
-# the following is useful to make this script executable in both AWS Lambda and any other local environments
-
-if __name__ == '__main__':
-    lambda_handler('Local Test', None)
